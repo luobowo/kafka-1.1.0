@@ -145,7 +145,7 @@ public class KafkaChannel {
 
     public boolean isInMutableState() {
         //some requests do not require memory, so if we do not know what the current (or future) request is
-        //(receive == null) we dont mute. we also dont mute if whatever memory required has already been
+        //(receive == null) we don't mute. we also don't mute if whatever memory required has already been
         //successfully allocated (if none is required for the currently-being-read request
         //receive.memoryAllocated() is expected to return true)
         if (receive == null || receive.memoryAllocated())
@@ -186,6 +186,7 @@ public class KafkaChannel {
         this.transportLayer.addInterestOps(SelectionKey.OP_WRITE);
     }
 
+    // 一个response可能要read多次
     public NetworkReceive read() throws IOException {
         NetworkReceive result = null;
 
@@ -205,6 +206,7 @@ public class KafkaChannel {
         return result;
     }
 
+    // 一次不一定能够完全发出去，如果没有完全发出去，返回Null
     public Send write() throws IOException {
         Send result = null;
         if (send != null && send(send)) {
@@ -237,6 +239,7 @@ public class KafkaChannel {
 
     private boolean send(Send send) throws IOException {
         send.writeTo(transportLayer);
+        // 写完数据，一定要取消写事件，否则由于是LT触发，会一直触发可写状态
         if (send.completed())
             transportLayer.removeInterestOps(SelectionKey.OP_WRITE);
 

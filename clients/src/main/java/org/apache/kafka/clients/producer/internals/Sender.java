@@ -84,6 +84,7 @@ public class Sender implements Runnable {
     /* the metadata for the client */
     private final Metadata metadata;
 
+    // maxInflightRequests == 1 这个值才会为真
     /* the flag indicating whether the producer should guarantee the message order on the broker or not. */
     private final boolean guaranteeMessageOrder;
 
@@ -193,6 +194,7 @@ public class Sender implements Runnable {
         log.debug("Shutdown of Kafka producer I/O thread has completed.");
     }
 
+    // 一直从accumulator中取要发送的数据，发送出去（其实就是调用NetworkClient.send，然后由selector.poll就行驱动）
     /**
      * Run a single iteration of sending
      *
@@ -245,6 +247,7 @@ public class Sender implements Runnable {
         // get the list of partitions with data ready to send
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
 
+        // 更新metadata 4: partition 的 leader 未知
         // if there are any partitions whose leaders are not known yet, force metadata update
         if (!result.unknownLeaderTopics.isEmpty()) {
             // The set of topics with unknown leader contains topics with leader election pending as well as
@@ -260,6 +263,7 @@ public class Sender implements Runnable {
         long notReadyTimeout = Long.MAX_VALUE;
         while (iter.hasNext()) {
             Node node = iter.next();
+            // 在ready中，如果没有准备好并且可以连接，就会初始化一个连接
             if (!this.client.ready(node, now)) {
                 iter.remove();
                 notReadyTimeout = Math.min(notReadyTimeout, this.client.connectionDelay(node, now));
@@ -300,6 +304,7 @@ public class Sender implements Runnable {
         long pollTimeout = Math.min(result.nextReadyCheckDelayMs, notReadyTimeout);
         if (!result.readyNodes.isEmpty()) {
             log.trace("Nodes with data ready to send: {}", result.readyNodes);
+            // 设置client.poll的时间，如果有数据要发送，就设置为0
             // if some partitions are already ready to be sent, the select time would be 0;
             // otherwise if some partition already has some data accumulated but not ready yet,
             // the select time will be the time difference between now and its linger expiry time;
@@ -647,6 +652,7 @@ public class Sender implements Runnable {
             sendProduceRequest(now, entry.getKey(), acks, requestTimeout, entry.getValue());
     }
 
+    // 把同属于一个节点的ProducerBatch列表作为一个request发送出去
     /**
      * Create a produce request from the given record batches
      */
@@ -685,8 +691,10 @@ public class Sender implements Runnable {
         if (transactionManager != null && transactionManager.isTransactional()) {
             transactionalId = transactionManager.transactionalId();
         }
+        // 数据是以produceRecordsByPartition的形式封装起来准备发送的
         ProduceRequest.Builder requestBuilder = ProduceRequest.Builder.forMagic(minUsedMagic, acks, timeout,
                 produceRecordsByPartition, transactionalId);
+        // 发送完的回调
         RequestCompletionHandler callback = new RequestCompletionHandler() {
             public void onComplete(ClientResponse response) {
                 handleProduceResponse(response, recordsByPartition, time.milliseconds());

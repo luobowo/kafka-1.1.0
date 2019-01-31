@@ -33,15 +33,16 @@ import java.util.zip.Checksum;
 
 import static org.apache.kafka.common.record.RecordBatch.MAGIC_VALUE_V2;
 
+// 采用了ZigZag的variant变长方式编码，参考 https://blog.csdn.net/u013256816/article/details/80300272
 /**
  * This class implements the inner record format for magic 2 and above. The schema is as follows:
  *
  *
  * Record =>
- *   Length => Varint
- *   Attributes => Int8
- *   TimestampDelta => Varlong
- *   OffsetDelta => Varint
+ *   Length => Varint             最大5
+ *   Attributes => Int8           1
+ *   TimestampDelta => Varlong     最大10
+ *   OffsetDelta => Varint         最大5
  *   Key => Bytes
  *   Value => Bytes
  *   Headers => [HeaderKey HeaderValue]

@@ -82,6 +82,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.kafka.common.serialization.ExtendedSerializer.Wrapper.ensureExtended;
 
+// producer是线程安全的
 /**
  * A Kafka client that publishes records to the Kafka cluster.
  * <P>
@@ -897,9 +898,13 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         do {
             log.trace("Requesting metadata update for topic {}.", topic);
             metadata.add(topic);
+            // 设置需要更新metadata，然后wake up 发送线程(即selector)，在NetworkClient.poll里，会调用
+            // metadataUpdater.maybeUpdate去发送更新metadata的请求
             int version = metadata.requestUpdate();
+            // 最终还是使得selector wakeup
             sender.wakeup();
             try {
+                // 在这里等待metadata的到来，这时metadata.version会加1
                 metadata.awaitUpdate(version, remainingWaitMs);
             } catch (TimeoutException ex) {
                 // Rethrow with original maxWaitMs to prevent logging exception with remainingWaitMs

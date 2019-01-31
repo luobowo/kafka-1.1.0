@@ -219,6 +219,7 @@ public final class RecordAccumulator {
 
                 MemoryRecordsBuilder recordsBuilder = recordsBuilder(buffer, maxUsableMagic);
                 ProducerBatch batch = new ProducerBatch(tp, recordsBuilder, time.milliseconds());
+                // 把数据放进buffer(进行了封装,并以DefaultRecord的形式)，并返回future
                 FutureRecordMetadata future = Utils.notNull(batch.tryAppend(timestamp, key, value, headers, callback, time.milliseconds()));
 
                 dq.addLast(batch);
@@ -425,6 +426,7 @@ public final class RecordAccumulator {
         long nextReadyCheckDelayMs = Long.MAX_VALUE;
         Set<String> unknownLeaderTopics = new HashSet<>();
 
+        // BufferPoll的等待队列不为空，说明分配的内存已经耗尽
         boolean exhausted = this.free.queued() > 0;
         for (Map.Entry<TopicPartition, Deque<ProducerBatch>> entry : this.batches.entrySet()) {
             TopicPartition part = entry.getKey();
@@ -438,6 +440,12 @@ public final class RecordAccumulator {
                     unknownLeaderTopics.add(part.topic());
                 } else if (!readyNodes.contains(leader) && !muted.contains(part)) {
                     ProducerBatch batch = deque.peekFirst();
+                    // 需要满足以下任一条件才能发送：
+                    // (1) batch填满了
+                    // (2) 时间到了
+                    // (3) 内存耗尽了
+                    // (4) 关闭了
+                    // (5) 强制刷新
                     if (batch != null) {
                         long waitedTimeMs = batch.waitedTimeMs(nowMs);
                         boolean backingOff = batch.attempts() > 0 && waitedTimeMs < retryBackoffMs;
@@ -495,6 +503,8 @@ public final class RecordAccumulator {
 
         Map<Integer, List<ProducerBatch>> batches = new HashMap<>();
         for (Node node : nodes) {
+            // 注意：即使 ProducerBatch 没有达到条件，但为了保证每个 request 尽快多地发送数据提高发送效率
+            // 这个 ProducerBatch 依然会被提前选出来并进行发送。
             int size = 0;
             List<PartitionInfo> parts = cluster.partitionsForNode(node.id());
             List<ProducerBatch> ready = new ArrayList<>();

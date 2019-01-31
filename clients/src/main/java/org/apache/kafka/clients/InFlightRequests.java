@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class InFlightRequests {
 
     private final int maxInFlightRequestsPerConnection;
+    // 使用队列保存，依赖服务端进行顺序ack来保证顺序性；服务端是通过mute/unMute来进行保证的，详见SocketServer.scala
     private final Map<String, Deque<NetworkClient.InFlightRequest>> requests = new HashMap<>();
     /** Thread safe total number of in flight requests. */
     private final AtomicInteger inFlightRequestCount = new AtomicInteger(0);

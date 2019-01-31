@@ -56,11 +56,14 @@ public final class Metadata {
     private static final long TOPIC_EXPIRY_NEEDS_UPDATE = -1L;
 
     private final long refreshBackoffMs;
+    // 过期时间（每隔多久更新一次），默认10分钟
     private final long metadataExpireMs;
+    // 更新后就+1
     private int version;
     private long lastRefreshMs;
     private long lastSuccessfulRefreshMs;
     private AuthenticationException authenticationException;
+    // 集群信息
     private Cluster cluster;
     private boolean needUpdate;
     /* Topics with expiry time */
@@ -266,6 +269,7 @@ public final class Metadata {
             clusterResourceListeners.onUpdate(newCluster.clusterResource());
         }
 
+        // 更新完调用notifyAll，这样阻塞在awaitUpdate的操作就能够继续了
         notifyAll();
         log.debug("Updated cluster metadata version {} to {}", this.version, this.cluster);
     }

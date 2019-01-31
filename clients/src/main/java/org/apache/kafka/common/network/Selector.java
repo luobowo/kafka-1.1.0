@@ -66,6 +66,7 @@ import java.util.concurrent.TimeUnit;
  * nioSelector.connect(&quot;42&quot;, new InetSocketAddress(&quot;google.com&quot;, server.port), 64000, 64000);
  * </pre>
  *
+ * // connect是个异步过程，调用connect成功不意味着连接建立了，需要注意
  * The connect call does not block on the creation of the TCP connection, so the connect method only begins initiating
  * the connection. The successful invocation of this method does not mean a valid connection has been established.
  *
@@ -81,6 +82,7 @@ import java.util.concurrent.TimeUnit;
  * The nioSelector maintains several lists that are reset by each call to <code>poll()</code> which are available via
  * various getters. These are reset by each call to <code>poll()</code>.
  *
+ * // 非线程安全
  * This class is not thread safe!
  */
 public class Selector implements Selectable, AutoCloseable {
@@ -102,14 +104,20 @@ public class Selector implements Selectable, AutoCloseable {
     private final Logger log;
     private final java.nio.channels.Selector nioSelector;
     private final Map<String, KafkaChannel> channels;
+    // 调用mute加入set，unmute或者close移除
     private final Set<KafkaChannel> explicitlyMutedChannels;
     private boolean outOfMemory;
+    // 将数据写入通道成功后，就添加进这个列表
     private final List<Send> completedSends;
+    // 在poll的最后，从stagedReceives里面拿出消息，放到completedReceives（为什么要这么做？处理超时？）
     private final List<NetworkReceive> completedReceives;
+    // 收到消息时先放到stagedReceives里（为什么？而且只能放一条）
     private final Map<KafkaChannel, Deque<NetworkReceive>> stagedReceives;
     private final Set<SelectionKey> immediatelyConnectedKeys;
+    //  优雅关闭先放到closingChannels，等处理了stagedReceives或者发送失败，再真正关闭
     private final Map<String, KafkaChannel> closingChannels;
     private Set<SelectionKey> keysWithBufferedRead;
+    // 用来记录需要Notify的close
     private final Map<String, ChannelState> disconnected;
     private final List<String> connected;
     private final List<String> failedSends;
@@ -217,7 +225,9 @@ public class Selector implements Selectable, AutoCloseable {
             if (connected) {
                 // OP_CONNECT won't trigger for immediately connected channels
                 log.debug("Immediately connected to node {}", id);
+                // 记录立刻连接的集合
                 immediatelyConnectedKeys.add(key);
+                // 已经连接，取消监听OP_CONNECT
                 key.interestOps(0);
             }
         } catch (IOException | RuntimeException e) {
@@ -274,6 +284,14 @@ public class Selector implements Selectable, AutoCloseable {
             throw new IllegalStateException("There is already a connection for id " + id + " that is still being closed");
     }
 
+    /**
+     * register channel with interest ops and attach channel with KafkaChannel, then put to channels map
+     * @param id The id for the new connection
+     * @param socketChannel java.nio.socketChannel
+     * @param interestedOps interest ops
+     * @return
+     * @throws IOException
+     */
     private SelectionKey registerChannel(String id, SocketChannel socketChannel, int interestedOps) throws IOException {
         SelectionKey key = socketChannel.register(nioSelector, interestedOps);
         KafkaChannel channel = buildAndAttachKafkaChannel(socketChannel, id, key);
@@ -328,6 +346,7 @@ public class Selector implements Selectable, AutoCloseable {
     public void send(Send send) {
         String connectionId = send.destination();
         KafkaChannel channel = openOrClosingChannelOrFail(connectionId);
+        // 正在关闭的channel不进行发送，将发送放进failedSends
         if (closingChannels.containsKey(connectionId)) {
             // ensure notification via `disconnected`, leave channel in the state in which closing was triggered
             this.failedSends.add(connectionId);
@@ -369,7 +388,7 @@ public class Selector implements Selectable, AutoCloseable {
      * the poll to add the completedReceives. If there are any active channels in the "stagedReceives" we set "timeout" to 0
      * and pop response and add to the completedReceives.
      *
-     * Atmost one entry is added to "completedReceives" for a channel in each poll. This is necessary to guarantee that
+     * At most one entry is added to "completedReceives" for a channel in each poll. This is necessary to guarantee that
      * requests from a channel are processed on the broker in the order they are sent. Since outstanding requests added
      * by SocketServer to the request queue may be processed by different request handler threads, requests on each
      * channel must be processed one-at-a-time to guarantee ordering.
@@ -389,6 +408,7 @@ public class Selector implements Selectable, AutoCloseable {
 
         boolean dataInBuffers = !keysWithBufferedRead.isEmpty();
 
+        // 如果poll有数据可以IO操作（可以收，或者可以写等），就设置timeout为0，进行非阻塞selectNow
         if (hasStagedReceives() || !immediatelyConnectedKeys.isEmpty() || (madeReadProgressLastCall && dataInBuffers))
             timeout = 0;
 
@@ -492,6 +512,7 @@ public class Selector implements Selectable, AutoCloseable {
                         sensors.successfulAuthentication.record();
                 }
 
+                /* handle channel that ready to read*/
                 attemptRead(key, channel);
 
                 if (channel.hasBytesBuffered()) {
@@ -506,6 +527,7 @@ public class Selector implements Selectable, AutoCloseable {
                 if (channel.ready() && key.isWritable()) {
                     Send send = null;
                     try {
+                        // 写完取消OP_WRITE
                         send = channel.write();
                     } catch (Exception e) {
                         sendFailed = true;
@@ -693,6 +715,7 @@ public class Selector implements Selectable, AutoCloseable {
             // There is no disconnect notification for local close, but updating
             // channel state here anyway to avoid confusion.
             channel.state(ChannelState.LOCAL_CLOSE);
+            // 主动关闭的模式是 DISCARD_NO_NOTIFY
             close(channel, CloseMode.DISCARD_NO_NOTIFY);
         } else {
             KafkaChannel closingChannel = this.closingChannels.remove(id);

@@ -645,6 +645,7 @@ private[kafka] class Processor(val id: Int,
             val req = new RequestChannel.Request(processor = id, context = context,
               startTimeNanos = time.nanoseconds, memoryPool, receive.payload, requestChannel.metrics)
             requestChannel.sendRequest(req)
+            // 收到请求，把这个请求对应的channel, mute
             selector.mute(receive.source)
           case None =>
             // This should never happen since completed receives are processed immediately after `poll()`
@@ -666,6 +667,7 @@ private[kafka] class Processor(val id: Int,
           throw new IllegalStateException(s"Send for ${send.destination} completed, but not in `inflightResponses`")
         }
         updateRequestMetrics(resp)
+        // 发送response之后，把这个response对应的channel, unMute
         selector.unmute(send.destination)
       } catch {
         case e: Throwable => processChannelException(send.destination,
