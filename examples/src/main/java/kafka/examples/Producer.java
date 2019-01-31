@@ -35,6 +35,27 @@ public class Producer extends Thread {
         props.put("client.id", "DemoProducer");
         props.put("key.serializer", "org.apache.kafka.common.serialization.IntegerSerializer");
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        props.setProperty("acks", "all");
+        // Enable idempotence to reduce repeated message in broker side
+//        props.setProperty("enable.idempotence", "true");
+        // Infinity retry, we never drop retriable message
+        props.setProperty("retries", String.valueOf(Integer.MAX_VALUE));
+        // We should block in sending when metadata not ready & memory buffer is full
+        props.setProperty("max.block.ms", String.valueOf(Long.MAX_VALUE));
+        // Set request to never expire for now
+        props.setProperty("request.timeout.ms", Integer.toString(Integer.MAX_VALUE));
+        // Max idle to detect some broker IO Hang problem, should not large than 1 minute
+        props.setProperty("connections.max.idle.ms", String.valueOf(20000));
+        // In flight requests should between [1,5], 2 maybe the best choice
+        props.put("max.in.flight.requests.per.connection", "5");
+        // Linger use related to batch.size, linger in [10, 100] make better performance, 80 maybe the best choice
+        props.put("linger.ms", "80");
+        props.put("batch.size", "524288");
+        props.put("buffer.memory", "134217728");
+        props.put("max.request.size", "5242880");
+        // Compression enabled will increase producer throughput and reduce broker disk occupancy rate
+        props.put("compression.type", "lz4");
+
         producer = new KafkaProducer<>(props);
         this.topic = topic;
         this.isAsync = isAsync;
@@ -61,7 +82,7 @@ public class Producer extends Thread {
             }
             ++messageNo;
             try {
-                Thread.sleep(5000);
+                Thread.sleep(1000);
             }catch(InterruptedException e){
                 e.printStackTrace();
                 Thread.currentThread().interrupt();
@@ -70,7 +91,7 @@ public class Producer extends Thread {
     }
 
     public static void main(String[] args){
-        Producer producer = new Producer(KafkaProperties.TOPIC2, true);
+        Producer producer = new Producer(KafkaProperties.TOPIC, true);
         producer.start();
     }
 }
