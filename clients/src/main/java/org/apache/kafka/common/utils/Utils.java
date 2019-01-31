@@ -693,6 +693,13 @@ public final class Utils {
         try {
             Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException outer) {
+            // Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+            // source.delete()
+            // 解决windows下java.nio.file.FileSystemException: The process cannot access the file because it is
+            // being used by another process错误
+            // 参考：https://stackoverflow.com/questions/33924479/java-nio-file-filesystemexception-the-
+            // process-cannot-access-the-file-because-it
+            // 但有可能造成内存泄漏，详见 https://groups.google.com/forum/#!topic/cdap-user/5l-nN212CQM
             try {
                 Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
                 log.debug("Non-atomic move of {} to {} succeeded after atomic move failed due to {}", source, target,
