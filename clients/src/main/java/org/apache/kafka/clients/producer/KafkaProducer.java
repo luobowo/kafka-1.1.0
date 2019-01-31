@@ -409,6 +409,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             } else {
                 this.metadata = new Metadata(retryBackoffMs, config.getLong(ProducerConfig.METADATA_MAX_AGE_CONFIG),
                     true, true, clusterResourceListeners);
+                // 设置服务器，用于最开始发现metadata
                 this.metadata.update(Cluster.bootstrap(addresses), Collections.<String>emptySet(), time.milliseconds());
             }
             ChannelBuilder channelBuilder = ClientUtils.createChannelBuilder(config);
