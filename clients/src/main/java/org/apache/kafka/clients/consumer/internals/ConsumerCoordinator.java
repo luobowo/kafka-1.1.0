@@ -252,6 +252,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         this.nextAutoCommitDeadline = time.milliseconds() + autoCommitIntervalMs;
 
         // execute the user's callback after rebalance
+        // 执行用户指定的onPartitionsAssigned回调
         ConsumerRebalanceListener listener = subscriptions.rebalanceListener();
         log.info("Setting newly assigned partitions {}", subscriptions.assignedPartitions());
         try {
@@ -274,12 +275,17 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     public void poll(long now, long remainingMs) {
         invokeCompletedOffsetCommitCallbacks();
 
+        // 对于auto_assigned(auto_topics|auto_pattern)模式，需要先找到一个coordinator进行组管理
         if (subscriptions.partitionsAutoAssigned()) {
+            // 如果没有 active coordinator,要确保先找到一个coordinator，否则就block住
             if (coordinatorUnknown()) {
+                // 确认coordinator known，并且准备好接受request，这里会阻塞住，因为timeout是Long.MAX_VALUE
+                // 如果没有加入组，就发送请求（带上groupId信息），加入组
                 ensureCoordinatorReady();
                 now = time.milliseconds();
             }
 
+            // 初始时或者metadata变化或者订阅变化时，都需要rejoin
             if (needRejoin()) {
                 // due to a race condition between the initial metadata fetch and the initial rebalance,
                 // we need to ensure that the metadata is fresh before joining initially. This ensures
@@ -287,6 +293,9 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                 if (subscriptions.hasPatternSubscription())
                     client.ensureFreshMetadata();
 
+                // 1. 确保连接到coordinator
+                // 2. 如果还没有启动心跳线程，则启动之
+                // 3. 加入组
                 ensureActiveGroup();
                 now = time.milliseconds();
             }
@@ -308,6 +317,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             }
         }
 
+        // 如果开启了自动提交，满足条件进行提交
         maybeAutoCommitOffsetsAsync(now);
     }
 

@@ -185,6 +185,7 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
      * @return number of fetches sent
      */
     public int sendFetches() {
+        // 得到所有要发送fetch请求的节点列表
         Map<Node, FetchSessionHandler.FetchRequestData> fetchRequestMap = prepareFetchRequests();
         for (Map.Entry<Node, FetchSessionHandler.FetchRequestData> entry : fetchRequestMap.entrySet()) {
             final Node fetchTarget = entry.getKey();
@@ -223,6 +224,7 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
 
                                 log.debug("Fetch {} at offset {} for partition {} returned fetch data {}",
                                         isolationLevel, fetchOffset, partition, fetchData);
+                                // 收到的数据，暂时先存在completedFetches里
                                 completedFetches.add(new CompletedFetch(partition, fetchOffset, fetchData, metricAggregator,
                                         resp.requestHeader().apiVersion()));
                             }
@@ -529,6 +531,7 @@ public class Fetcher<K, V> implements SubscriptionState.Listener, Closeable {
                 long nextOffset = partitionRecords.nextFetchOffset;
                 log.trace("Returning fetched records at offset {} for assigned partition {} and update " +
                         "position to {}", position, partitionRecords.partition, nextOffset);
+                // 更新位点
                 subscriptions.position(partitionRecords.partition, nextOffset);
 
                 Long partitionLag = subscriptions.partitionLag(partitionRecords.partition, isolationLevel);

@@ -660,8 +660,12 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.log = logContext.logger(getClass());
 
             log.debug("Initializing the Kafka consumer");
+            // request等待响应的超时时间，默认305秒, 比默认的max.poll.interval.ms 大一点
             this.requestTimeoutMs = config.getInt(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG);
+            // 用来侦听consumer失败的时间，如果这么长时间broker没有收到consumer的心跳,broker就会把consumer从group里面移除，
+            // 并且启动rebalance，设置为30秒，默认是10秒
             int sessionTimeOutMs = config.getInt(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG);
+            // 服务端等待满足fetch.min.bytes这么多数据的最大时间，默认500ms
             int fetchMaxWaitMs = config.getInt(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG);
             if (this.requestTimeoutMs <= sessionTimeOutMs || this.requestTimeoutMs <= fetchMaxWaitMs)
                 throw new ConfigException(ConsumerConfig.REQUEST_TIMEOUT_MS_CONFIG + " should be greater than " + ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG + " and " + ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG);
@@ -676,6 +680,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     MetricsReporter.class);
             reporters.add(new JmxReporter(JMX_PREFIX));
             this.metrics = new Metrics(metricConfig, reporters, time);
+            // retry时间间隔，默认100ms
             this.retryBackoffMs = config.getLong(ConsumerConfig.RETRY_BACKOFF_MS_CONFIG);
 
             // load interceptors and make sure they get clientId
@@ -713,6 +718,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     config.getString(ConsumerConfig.ISOLATION_LEVEL_CONFIG).toUpperCase(Locale.ROOT));
             Sensor throttleTimeSensor = Fetcher.throttleTimeSensor(metrics, metricsRegistry.fetcherMetrics);
 
+            // heartbeat时间间隔，默认3秒
             int heartbeatIntervalMs = config.getInt(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG);
 
             NetworkClient netClient = new NetworkClient(
@@ -746,6 +752,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.coordinator = new ConsumerCoordinator(logContext,
                     this.client,
                     groupId,
+                    // poll()之间的最大时间间隔，默认300秒，即5分钟，超过会启动reBalance流程
                     config.getInt(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG),
                     config.getInt(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG),
                     heartbeatIntervalMs,
@@ -757,6 +764,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     this.time,
                     retryBackoffMs,
                     config.getBoolean(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG),
+                    // 自动提交的时间间隔，默认5秒
                     config.getInt(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG),
                     this.interceptors,
                     config.getBoolean(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG),
@@ -768,6 +776,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     config.getInt(ConsumerConfig.FETCH_MAX_BYTES_CONFIG),
                     config.getInt(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG),
                     config.getInt(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG),
+                    // 最大poll的记录数，默认500
                     config.getInt(ConsumerConfig.MAX_POLL_RECORDS_CONFIG),
                     config.getBoolean(ConsumerConfig.CHECK_CRCS_CONFIG),
                     this.keyDeserializer,
@@ -895,6 +904,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
      */
     @Override
     public void subscribe(Collection<String> topics, ConsumerRebalanceListener listener) {
+        // 首先确保不会被多线程使用
         acquireAndEnsureOpen();
         try {
             if (topics == null) {
@@ -911,6 +921,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                 throwIfNoAssignorsConfigured();
 
                 log.debug("Subscribed to topic(s): {}", Utils.join(topics, ", "));
+                // 这里更换订阅状态，不能增量订阅，并且如果两次订阅的类型不同（没有先unsubscribe前一个）,会报错
                 this.subscriptions.subscribe(new HashSet<>(topics), listener);
                 metadata.setTopics(subscriptions.groupSubscription());
             }
@@ -919,6 +930,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         }
     }
 
+    // 订阅，（不能增量订阅，订阅列表会替换现有的，如果是空列表，相当于unsubscribe）
+    // 不能和assignment一起使用
     /**
      * Subscribe to the given list of topics to get dynamically assigned partitions.
      * <b>Topic subscriptions are not incremental. This list will replace the current
@@ -1136,6 +1149,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         }
     }
 
+    // 除了拉取数据，还做位点提交（如果开启了自动提交） 和 位点重置。
     /**
      * Do one round of polling. In addition to checking for new data, this does any needed offset commits
      * (if auto-commit is enabled), and offset resets (if an offset reset policy is defined).
@@ -1146,9 +1160,14 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         client.maybeTriggerWakeup();
 
         long startMs = time.milliseconds();
+        // 1. 对于auto_topics|auto_pattern，连接coordinator, 进行心跳，加入组
+        // 2. 对于user_assigned，只要保证metadata最新，有node ready就可以了
+        // 3. 如果开启了自动提交，进行自动提交
         coordinator.poll(startMs, timeout);
 
         // Lookup positions of assigned partitions
+        // 1. 先从coordinator获取上次提交的位点
+        // 2. 如果还有tp位点未知，就用重置策略
         boolean hasAllFetchPositions = updateFetchPositions();
 
         // if data is available already, return it immediately
@@ -1157,6 +1176,9 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             return records;
 
         // send any new fetches (won't resend pending fetches)
+        // 取数据，并暂时先存在completedFetches里
+        // 向订阅的所有 partition 发送 fetch 请求,会从多个 partition 拉取数据
+        // 调用一次 fetcher.sendFetches，拉取到的数据，可能需要多次 pollOnce 循环才能处理完
         fetcher.sendFetches();
 
         long nowMs = time.milliseconds();

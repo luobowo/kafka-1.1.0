@@ -473,11 +473,13 @@ class GroupCoordinator(val brokerId: Int,
           case None =>
             if (generationId < 0) {
               // the group is not relying on Kafka for group management, so allow the commit
+              // 不使用 group-coordinator 管理的情况
               val group = groupManager.addGroup(new GroupMetadata(groupId, initialState = Empty))
               doCommitOffsets(group, memberId, generationId, NO_PRODUCER_ID, NO_PRODUCER_EPOCH,
                 offsetMetadata, responseCallback)
             } else {
               // or this is a request coming from an older generation. either way, reject the commit
+              // 过期的 offset-commit
               responseCallback(offsetMetadata.mapValues(_ => Errors.ILLEGAL_GENERATION))
             }
 
@@ -507,6 +509,7 @@ class GroupCoordinator(val brokerId: Int,
       if (group.is(Dead)) {
         responseCallback(offsetMetadata.mapValues(_ => Errors.UNKNOWN_MEMBER_ID))
       } else if ((generationId < 0 && group.is(Empty)) || (producerId != NO_PRODUCER_ID)) {
+        // 来自 assign 的情况
         // The group is only using Kafka to store offsets.
         // Also, for transactional offset commits we don't need to validate group membership and the generation.
         groupManager.storeOffsets(group, memberId, offsetMetadata, responseCallback, producerId, producerEpoch)

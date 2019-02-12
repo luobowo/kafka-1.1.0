@@ -67,6 +67,7 @@ public class SubscriptionState {
     /* the list of topics the user has requested */
     private Set<String> subscription;
 
+    // 对于leader，是所有组员的订阅topic集合；对于follower，只是自己订阅的topic
     /* the list of topics the group has subscribed to (set only for the leader on join group completion) */
     private final Set<String> groupSubscription;
 
@@ -108,10 +109,12 @@ public class SubscriptionState {
         if (listener == null)
             throw new IllegalArgumentException("RebalanceListener cannot be null");
 
+        // 如果发现和之前的订阅类型不同，会出错
         setSubscriptionType(SubscriptionType.AUTO_TOPICS);
 
         this.rebalanceListener = listener;
 
+        // 更改订阅的topic，并不能进行增量订阅
         changeSubscription(topics);
     }
 

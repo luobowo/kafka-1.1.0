@@ -108,6 +108,7 @@ public class ConsumerNetworkClient implements Closeable {
      * @return A future which indicates the result of the send.
      */
     public RequestFuture<ClientResponse> send(Node node, AbstractRequest.Builder<?> requestBuilder) {
+        // consumerNetworkClient 这里的send只是把要发送的东西放到unsent里，在trySend里面才会真正去发送
         long now = time.milliseconds();
         RequestFutureCompletionHandler completionHandler = new RequestFutureCompletionHandler();
         ClientRequest clientRequest = client.newClientRequest(node.idString(), requestBuilder, now, true,
