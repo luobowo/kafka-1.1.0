@@ -197,6 +197,7 @@ class KafkaController(val config: KafkaConfig, zkClient: KafkaZkClient, time: Ti
 
   private def state: ControllerState = eventManager.state
 
+  // Controller上任
   /**
    * This callback is invoked by the zookeeper leader elector on electing the current broker as the new controller.
    * It does the following things on the become-controller state change -
@@ -217,6 +218,7 @@ class KafkaController(val config: KafkaConfig, zkClient: KafkaZkClient, time: Ti
     incrementControllerEpoch()
     info("Registering handlers")
 
+    // 注册各种监听器
     // before reading source of truth from zookeeper, register the listeners to get broker/topic callbacks
     val childChangeHandlers = Seq(brokerChangeHandler, topicChangeHandler, topicDeletionHandler, logDirEventNotificationHandler,
       isrChangeNotificationHandler)
@@ -242,6 +244,7 @@ class KafkaController(val config: KafkaConfig, zkClient: KafkaZkClient, time: Ti
     info("Sending update metadata request")
     sendUpdateMetadataRequest(controllerContext.liveOrShuttingDownBrokerIds.toSeq)
 
+    // 开启replicaState和partitionState的状态机
     replicaStateMachine.startup()
     partitionStateMachine.startup()
 
@@ -271,12 +274,14 @@ class KafkaController(val config: KafkaConfig, zkClient: KafkaZkClient, time: Ti
       delay = delay, unit = unit)
   }
 
+  // Controller退位
   /**
    * This callback is invoked by the zookeeper leader elector when the current broker resigns as the controller. This is
    * required to clean up internal controller data structures
    */
   private def onControllerResignation() {
     debug("Resigning")
+    // 取消各种监听器
     // de-register listeners
     zkClient.unregisterZNodeChildChangeHandler(isrChangeNotificationHandler.path)
     zkClient.unregisterZNodeChangeHandler(partitionReassignmentHandler.path)
@@ -1183,6 +1188,7 @@ class KafkaController(val config: KafkaConfig, zkClient: KafkaZkClient, time: Ti
     zkClient.deleteController()
   }
 
+  // 进行选举
   private def elect(): Unit = {
     val timestamp = time.milliseconds
     activeControllerId = zkClient.getControllerId.getOrElse(-1)

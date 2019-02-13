@@ -350,6 +350,7 @@ private[kafka] class Acceptor(val endPoint: EndPoint,
                 val key = iter.next
                 iter.remove()
                 if (key.isAcceptable) {
+                  //拿到一个socket连接，轮询选择一个processor进行处理
                   val processor = synchronized {
                     currentProcessor = currentProcessor % processors.size
                     processors(currentProcessor)
@@ -644,6 +645,7 @@ private[kafka] class Processor(val id: Int,
               channel.principal, listenerName, securityProtocol)
             val req = new RequestChannel.Request(processor = id, context = context,
               startTimeNanos = time.nanoseconds, memoryPool, receive.payload, requestChannel.metrics)
+            // 把请求放到requestChannel的request队列里面，request队列只有一个
             requestChannel.sendRequest(req)
             // 收到请求，把这个请求对应的channel, mute
             selector.mute(receive.source)
@@ -720,7 +722,9 @@ private[kafka] class Processor(val id: Int,
    * Queue up a new connection for reading
    */
   def accept(socketChannel: SocketChannel) {
+    // 把新进来的connection放入newConnections队列
     newConnections.add(socketChannel)
+    // 唤醒processor的Selector
     wakeup()
   }
 

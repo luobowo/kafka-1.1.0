@@ -130,6 +130,8 @@ object ReplicaManager {
   val OfflinePartition = new Partition("", -1, null, null, isOffline = true)
 }
 
+// 完成消息从leader到其它followers的同步
+// 3个延迟对象delayedProducePurgatory, delayedFetchPurgatory, delayedDeleteRecordsPurgatory
 class ReplicaManager(val config: KafkaConfig,
                      metrics: Metrics,
                      time: Time,
@@ -175,6 +177,7 @@ class ReplicaManager(val config: KafkaConfig,
   /* epoch of the controller that last changed the leader */
   @volatile var controllerEpoch: Int = KafkaController.InitialControllerEpoch - 1
   private val localBrokerId = config.brokerId
+  // 核心变量：存储该节点上所有的Partition
   private val allPartitions = new Pool[TopicPartition, Partition](valueFactory = Some(tp =>
     new Partition(tp.topic, tp.partition, time, this)))
   private val replicaStateChangeLock = new Object

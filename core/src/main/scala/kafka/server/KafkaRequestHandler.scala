@@ -66,6 +66,7 @@ class KafkaRequestHandler(id: Int,
           try {
             request.requestDequeueTimeNanos = endTime
             trace(s"Kafka request handler $id on broker $brokerId handling request $request")
+            // 处理结果，处理完放入response队列
             apis.handle(request)
           } catch {
             case e: FatalExitError =>
@@ -92,6 +93,7 @@ class KafkaRequestHandler(id: Int,
 
 }
 
+// M个线程，每个线程，从requestQueue中取出request，然后调用KafkaApis处理，处理的response，再放回response Queue
 class KafkaRequestHandlerPool(val brokerId: Int,
                               val requestChannel: RequestChannel,
                               val apis: KafkaApis,
