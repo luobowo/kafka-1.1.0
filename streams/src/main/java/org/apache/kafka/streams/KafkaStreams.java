@@ -157,14 +157,14 @@ public class KafkaStreams {
      *                 +--------------+
      *         +<----- | Created (0)  |
      *         |       +-----+--------+
-     *         |             |
+     *         |             | start()
      *         |             v
      *         |       +--------------+
      *         +<----- | Running (2)  | -------->+
      *         |       +----+--+------+          |
-     *         |            |  ^                 |
-     *         |            v  |                 |
-     *         |       +----+--+------+          |
+     *         | one  thread|  ^ all  threads    |
+     *         | turn to    v  |turn to running  |
+     *         | revoked+----+--+------+         |
      *         |       | Re-          |          v
      *         |       | Balancing (1)| -------->+
      *         |       +-----+--------+          |
@@ -646,6 +646,7 @@ public class KafkaStreams {
 
         internalTopologyBuilder.setApplicationId(applicationId);
 
+        // 构建一个ProcessorTopology
         // sanity check to fail-fast in case we cannot build a ProcessorTopology due to an exception
         internalTopologyBuilder.build();
 
@@ -702,6 +703,7 @@ public class KafkaStreams {
             storeProviders.add(new StreamThreadStateStoreProvider(threads[i]));
         }
 
+        // 设置state listener
         final StreamStateListener streamStateListener = new StreamStateListener(threadState, globalThreadState);
         if (globalTaskTopology != null) {
             globalStreamThread.setStateListener(streamStateListener);

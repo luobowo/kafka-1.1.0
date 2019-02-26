@@ -72,6 +72,7 @@ public class WordCountProcessorDemo {
 
                                     System.out.println("[" + entry.key + ", " + entry.value + "]");
 
+                                    // 转发数据到下游处理节点
                                     context.forward(entry.key, entry.value.toString());
                                 }
                             }
@@ -94,6 +95,7 @@ public class WordCountProcessorDemo {
                         }
                     }
 
+                    // 提交当前的处理进度
                     context.commit();
                 }
 

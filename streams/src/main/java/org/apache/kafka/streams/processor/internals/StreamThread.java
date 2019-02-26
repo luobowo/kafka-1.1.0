@@ -78,18 +78,18 @@ public class StreamThread extends Thread {
      *                +-------------+
      *          +<--- | Created (0) |
      *          |     +-----+-------+
-     *          |           |
+     *          |           | run()
      *          |           v
      *          |     +-----+-------+
      *          +<--- | Running (1) | <----+
      *          |     +-----+-------+      |
-     *          |           |              |
+     *          |           | onPartitionsRevoked()|
      *          |           v              |
-     *          |     +-----+-------+      |
+     *          |     +-----+-------+      |runOnce()
      *          +<--- | Partitions  |      |
      *          |     | Revoked (2) | <----+
      *          |     +-----+-------+      |
-     *          |           |              |
+     *          |           |onPartitionsAssigned()|
      *          |           v              |
      *          |     +-----+-------+      |
      *          |     | Partitions  |      |
@@ -257,6 +257,7 @@ public class StreamThread extends Thread {
                 if (streamThread.setState(State.PARTITIONS_ASSIGNED) == null) {
                     return;
                 }
+                // 分配分区完毕，创建任务
                 taskManager.createTasks(assignment);
             } catch (final Throwable t) {
                 log.error("Error caught during partition assignment, " +
@@ -601,6 +602,8 @@ public class StreamThread extends Thread {
 
         Producer<byte[], byte[]> threadProducer = null;
         final boolean eosEnabled = StreamsConfig.EXACTLY_ONCE.equals(config.getString(StreamsConfig.PROCESSING_GUARANTEE_CONFIG));
+        // 如果不是EOS，每个线程的所有任务共享一个producer
+        // 否则，每个任务都有一个producer
         if (!eosEnabled) {
             final Map<String, Object> producerConfigs = config.getProducerConfigs(threadClientId);
             log.info("Creating shared producer client");
@@ -655,6 +658,7 @@ public class StreamThread extends Thread {
             originalReset = (String) consumerConfigs.get(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG);
             consumerConfigs.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "none");
         }
+        // 每个线程只有一个consumer
         final Consumer<byte[], byte[]> consumer = clientSupplier.getConsumer(consumerConfigs);
         taskManager.setConsumer(consumer);
 
@@ -743,6 +747,7 @@ public class StreamThread extends Thread {
      */
     private void runLoop() {
         long recordsProcessedBeforeCommit = UNLIMITED_RECORDS;
+        // 初始化consumer，每个线程只会有一个consumer
         consumer.subscribe(builder.sourceTopicPattern(), rebalanceListener);
 
         while (isRunning()) {
@@ -776,6 +781,7 @@ public class StreamThread extends Thread {
             // to unblock the restoration as soon as possible
             records = pollRequests(0L);
 
+            // 初始化每个任务（对每个节点调用init等）
             if (taskManager.updateNewAndRestoringTasks()) {
                 setState(State.RUNNING);
             }
@@ -794,7 +800,9 @@ public class StreamThread extends Thread {
 
         if (records != null && !records.isEmpty() && taskManager.hasActiveRunningTasks()) {
             streamsMetrics.pollTimeSensor.record(computeLatency(), timerStartedMs);
+            // 按照partition将records分给activeTasks,加入到task的partitionGroup里面
             addRecordsToTasks(records);
+            // task运行，处理records
             final long totalProcessed = processAndMaybeCommit(recordsProcessedBeforeCommit);
             if (totalProcessed > 0) {
                 final long processLatency = computeLatency();
@@ -807,7 +815,9 @@ public class StreamThread extends Thread {
             }
         }
 
+        // 这个函数的作用是每个一段时间进行一段特殊处理，调用task里面的punctuate函数
         punctuate();
+        // commit and purge committed records
         maybeCommit(timerStartedMs);
         maybeUpdateStandbyTasks(timerStartedMs);
         return processedBeforeCommit;
@@ -915,12 +925,14 @@ public class StreamThread extends Thread {
         // Round-robin scheduling by taking one record from each task repeatedly
         // until no task has any records left
         do {
+            // 每次从每个active task取一个记录进行处理
             processed = taskManager.process();
             if (processed > 0) {
                 streamsMetrics.processTimeSensor.record(computeLatency() / (double) processed, timerStartedMs);
             }
             totalProcessedSinceLastMaybeCommit += processed;
 
+            // 定时任务
             punctuate();
 
             if (recordsProcessedBeforeCommit != UNLIMITED_RECORDS &&

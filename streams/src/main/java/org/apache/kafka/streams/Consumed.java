@@ -49,6 +49,7 @@ import org.apache.kafka.streams.processor.TimestampExtractor;
  * @param <K> type of record key
  * @param <V> type of record value
  */
+//  用来在构建KStream, KTable时定义可选的参数
 public class Consumed<K, V> {
 
     protected Serde<K> keySerde;

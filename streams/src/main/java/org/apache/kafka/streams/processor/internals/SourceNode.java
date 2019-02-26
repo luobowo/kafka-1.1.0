@@ -77,6 +77,7 @@ public class SourceNode<K, V> extends ProcessorNode<K, V> {
 
     @Override
     public void process(final K key, final V value) {
+        // 转发到下一个节点进行处理
         context.forward(key, value);
         nodeMetrics.sourceNodeForwardSensor.record();
     }

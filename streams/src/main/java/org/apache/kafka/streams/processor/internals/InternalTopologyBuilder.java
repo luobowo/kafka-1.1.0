@@ -104,6 +104,7 @@ public class InternalTopologyBuilder {
     // all global topics
     private final Set<String> globalTopics = new HashSet<>();
 
+    // offset重置模式为earliest的topic集合
     private final Set<String> earliestResetTopics = new HashSet<>();
 
     private final Set<String> latestResetTopics = new HashSet<>();
@@ -112,6 +113,7 @@ public class InternalTopologyBuilder {
 
     private final Set<Pattern> latestResetPatterns = new HashSet<>();
 
+    // 节点连接器 用于节点分组
     private final QuickUnion<String> nodeGrouper = new QuickUnion<>();
 
     private SubscriptionUpdates subscriptionUpdates = new SubscriptionUpdates();
@@ -120,6 +122,7 @@ public class InternalTopologyBuilder {
 
     private Pattern topicPattern = null;
 
+    // 节点分组
     private Map<Integer, Set<String>> nodeGroups = null;
 
     interface StateStoreFactory {
@@ -244,6 +247,7 @@ public class InternalTopologyBuilder {
         abstract AbstractNode describe();
     }
 
+    // processor节点工厂
     private static class ProcessorNodeFactory extends NodeFactory {
         private final ProcessorSupplier<?, ?> supplier;
         private final Set<String> stateStoreNames = new HashSet<>();
@@ -270,6 +274,7 @@ public class InternalTopologyBuilder {
         }
     }
 
+    // source节点工厂
     private class SourceNodeFactory extends NodeFactory {
         private final List<String> topics;
         private final Pattern pattern;
@@ -349,6 +354,7 @@ public class InternalTopologyBuilder {
         }
     }
 
+    // sink节点工厂
     private class SinkNodeFactory<K, V> extends NodeFactory {
         private final String topic;
         private final Serializer<K> keySerializer;
@@ -391,6 +397,8 @@ public class InternalTopologyBuilder {
         return this;
     }
 
+    // 增加sourceNode，要保证这个processor没有添加过(用name进行判定)，且topic也没注册过
+    // name: KSTREAM-SOURCE-%010d(index)
     public final void addSource(final Topology.AutoOffsetReset offsetReset,
                                 final String name,
                                 final TimestampExtractor timestampExtractor,
@@ -809,6 +817,10 @@ public class InternalTopologyBuilder {
         return nodeGroups;
     }
 
+    /* 对节点进行分组
+       nodeGrouper已经存储了所有的节点，source在nodeGrouper中只会充当root节点，而sink和processor节点在加入nodeGrouper中时，
+       都会与其前置节点进行unite操作。最终的结果就是分成了若干个不相关的流
+     */
     private Map<Integer, Set<String>> makeNodeGroups() {
         final Map<Integer, Set<String>> nodeGroups = new LinkedHashMap<>();
         final Map<String, Set<String>> rootToNodeGroup = new HashMap<>();
@@ -849,6 +861,9 @@ public class InternalTopologyBuilder {
         return newNodeGroupId;
     }
 
+    // 构建full ProcessorTopology
+    // (1) 对节点进行分组，拓扑排序
+    // (2) 从NodeFactories创建各种ProcessorNode
     public synchronized ProcessorTopology build() {
         return build((Integer) null);
     }
