@@ -203,12 +203,17 @@ public class Sender implements Runnable {
     void run(long now) {
         if (transactionManager != null) {
             try {
+                // 判断当前的 PID 是否需要重置，重置的原因是因为：如果有 topic-partition 的 batch 重试多次失败最后因为超时而被移
+                // 除，这时 sequence number 将无法做到连续，因为 sequence number 有部分已经分配出去，这时系统依赖自身的机制
+                // 无法继续进行下去
                 if (transactionManager.shouldResetProducerStateAfterResolvingSequences())
                     // Check if the previous run expired batches which requires a reset of the producer state.
+                    // 重置producer的状态，只有在仅开启幂等而不是事务时使用，使用事务时，应该直接给user抛出异常
                     transactionManager.resetProducerId();
 
                 if (!transactionManager.isTransactional()) {
                     // this is an idempotent producer, so make sure we have a producer id
+                    // 幂等获取pid
                     maybeWaitForProducerId();
                 } else if (transactionManager.hasUnresolvedSequences() && !transactionManager.hasFatalError()) {
                     transactionManager.transitionToFatalError(new KafkaException("The client hasn't received acknowledgment for " +
@@ -423,6 +428,7 @@ public class Sender implements Runnable {
         return null;
     }
 
+    // 发送InitProducerIdRequest请求，从broker获取producerId & epoch
     private void maybeWaitForProducerId() {
         while (!transactionManager.hasProducerId() && !transactionManager.hasError()) {
             try {

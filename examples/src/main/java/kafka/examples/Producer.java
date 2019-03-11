@@ -37,7 +37,7 @@ public class Producer extends Thread {
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.setProperty("acks", "all");
         // Enable idempotence to reduce repeated message in broker side
-//        props.setProperty("enable.idempotence", "true");
+        props.setProperty("enable.idempotence", "true");
         // Infinity retry, we never drop retriable message
         props.setProperty("retries", String.valueOf(Integer.MAX_VALUE));
         // We should block in sending when metadata not ready & memory buffer is full
@@ -82,7 +82,7 @@ public class Producer extends Thread {
             }
             ++messageNo;
             try {
-                Thread.sleep(1000);
+                Thread.sleep(10000);
             }catch(InterruptedException e){
                 e.printStackTrace();
                 Thread.currentThread().interrupt();
