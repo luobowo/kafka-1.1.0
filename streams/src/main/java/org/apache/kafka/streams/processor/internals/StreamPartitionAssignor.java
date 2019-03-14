@@ -553,6 +553,7 @@ public class StreamPartitionAssignor implements PartitionAssignor, Configurable 
         return assignment;
     }
 
+    // 将同属于一个group的task轮询分给所有的Thread
     // visible for testing
     List<List<TaskId>> interleaveTasksByGroupId(final Collection<TaskId> taskIds, final int numberThreads) {
         final LinkedList<TaskId> sortedTasks = new LinkedList<>(taskIds);

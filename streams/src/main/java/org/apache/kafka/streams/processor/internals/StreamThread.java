@@ -95,13 +95,13 @@ public class StreamThread extends Thread {
      *          |     | Partitions  |      |
      *          |     | Assigned (3)| ---->+
      *          |     +-----+-------+
-     *          |           |
+     * shutdown()|          |
      *          |           v
      *          |     +-----+-------+
      *          +---> | Pending     |
      *                | Shutdown (4)|
      *                +-----+-------+
-     *                      |
+     *                      |completeShutdown()
      *                      v
      *                +-----+-------+
      *                | Dead (5)    |
