@@ -358,6 +358,7 @@ class GroupMetadataManager(brokerId: Int,
             val responseError = group.inLock {
               if (status.error == Errors.NONE) {
                 if (!group.is(Dead)) {
+                  // 将pendingOffsetCommits的信息更新到offsets
                   filteredOffsetMetadata.foreach { case (topicPartition, offsetAndMetadata) =>
                     if (isTxnOffsetCommit)
                       group.onTxnOffsetCommitAppend(producerId, topicPartition, CommitRecordMetadataAndOffset(Some(status.baseOffset), offsetAndMetadata))
@@ -368,6 +369,7 @@ class GroupMetadataManager(brokerId: Int,
                 Errors.NONE
               } else {
                 if (!group.is(Dead)) {
+                  // 放弃提交(从pendingOffsetCommits中移除等)
                   if (!group.hasPendingOffsetCommitsFromProducer(producerId))
                     removeProducerGroup(producerId, group.groupId)
                   filteredOffsetMetadata.foreach { case (topicPartition, offsetAndMetadata) =>
