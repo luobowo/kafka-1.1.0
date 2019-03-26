@@ -70,6 +70,7 @@ class LogManager(logDirs: Seq[File],
   val InitialTaskDelayMs = 30 * 1000
 
   private val logCreationOrDeletionLock = new Object
+  // 分区与日志实例的对应关系
   private val currentLogs = new Pool[TopicPartition, Log]()
   // Future logs are put in the directory with "-future" suffix. Future log is created when user wants to move replica
   // from one log directory to another log directory on the same broker. The directory of the future log will be renamed
@@ -94,6 +95,7 @@ class LogManager(logDirs: Seq[File],
   }
 
   private val dirLocks = lockLogDirs(liveLogDirs)
+  //每个数据目录都有一个检查点文件,存储这个数据目录下所有分区的检查点信息
   @volatile private var recoveryPointCheckpoints = liveLogDirs.map(dir =>
     (dir, new OffsetCheckpointFile(new File(dir, RecoveryPointCheckpointFile), logDirFailureChannel))).toMap
   @volatile private var logStartOffsetCheckpoints = liveLogDirs.map(dir =>
@@ -285,6 +287,7 @@ class LogManager(logDirs: Seq[File],
     }
   }
 
+  //note: 加载所有的日志,而每个日志也会调用 loadSegments() 方法加载所有的分段,过程比较慢,所以每个日志都会创建一个单独的线程
   /**
    * Recover and load all logs in the given data directories
    */
@@ -330,6 +333,7 @@ class LogManager(logDirs: Seq[File],
           dirContent <- Option(dir.listFiles).toList
           logDir <- dirContent if logDir.isDirectory
         } yield {
+          //每个分区的目录都对应了一个线程
           CoreUtils.runnable {
             try {
               loadLog(logDir, recoveryPoints, logStartOffsets)
@@ -387,11 +391,13 @@ class LogManager(logDirs: Seq[File],
                          period = retentionCheckMs,
                          TimeUnit.MILLISECONDS)
       info("Starting log flusher with a default period of %d ms.".format(flushCheckMs))
+      //定时刷新还没有写到磁盘上日志
       scheduler.schedule("kafka-log-flusher",
                          flushDirtyLogs _,
                          delay = InitialTaskDelayMs,
                          period = flushCheckMs,
                          TimeUnit.MILLISECONDS)
+      //定时将所有数据目录所有日志的检查点写到检查点文件中
       scheduler.schedule("kafka-recovery-point-checkpoint",
                          checkpointLogRecoveryOffsets _,
                          delay = InitialTaskDelayMs,
@@ -402,6 +408,7 @@ class LogManager(logDirs: Seq[File],
                          delay = InitialTaskDelayMs,
                          period = flushStartOffsetCheckpointMs,
                          TimeUnit.MILLISECONDS)
+      //定时删除标记为 delete 的日志文件
       scheduler.schedule("kafka-delete-logs", // will be rescheduled after each delete logs with a dynamic period
                          deleteLogs _,
                          delay = InitialTaskDelayMs,
@@ -909,6 +916,7 @@ class LogManager(logDirs: Seq[File],
 
 object LogManager {
 
+  //检查点表示日志已经刷新到磁盘的位置，主要是用于数据恢复
   val RecoveryPointCheckpointFile = "recovery-point-offset-checkpoint"
   val LogStartOffsetCheckpointFile = "log-start-offset-checkpoint"
   val ProducerIdExpirationCheckIntervalMs = 10 * 60 * 1000
