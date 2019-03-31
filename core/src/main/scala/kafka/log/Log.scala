@@ -732,6 +732,7 @@ class Log(@volatile var dir: File,
           segmentBaseOffset = segment.baseOffset,
           relativePositionInSegment = segment.size)
 
+        // 向segment中添加消息
         segment.append(firstOffset = appendInfo.firstOffset,
           largestOffset = appendInfo.lastOffset,
           largestTimestamp = appendInfo.maxTimestamp,
@@ -1306,6 +1307,7 @@ class Log(@volatile var dir: File,
     }
   }
 
+  // 滚动创建日志,并添加到日志管理的映射表中
   /**
    * Roll the log over to a new active segment starting with the current logEndOffset.
    * This will trim the index to the exact size of the number of entries it currently contains.
@@ -1319,6 +1321,8 @@ class Log(@volatile var dir: File,
         checkIfMemoryMappedBufferClosed()
         val newOffset = math.max(expectedNextOffset, logEndOffset)
         val logFile = Log.logFile(dir, newOffset)
+        // 数据文件每隔一定的大小创建一个索引条目，而不是每条消息会创建索引条目，通过 index.interval.bytes
+        // 来配置，默认是 4096，也就是4KB；
         val offsetIdxFile = offsetIndexFile(dir, newOffset)
         val timeIdxFile = timeIndexFile(dir, newOffset)
         val txnIdxFile = transactionIndexFile(dir, newOffset)

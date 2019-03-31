@@ -807,6 +807,7 @@ class ReplicaManager(val config: KafkaConfig,
                     isolationLevel: IsolationLevel) {
     val isFromFollower = Request.isValidBrokerId(replicaId)
     val fetchOnlyFromLeader = replicaId != Request.DebuggingConsumerId && replicaId != Request.FutureLocalReplicaId
+    // 如果拉取请求来自 consumer（true）,只拉取 HW 以内的数据
     val fetchOnlyCommitted = !isFromFollower && replicaId != Request.FutureLocalReplicaId
 
     def readFromLog(): Seq[(TopicPartition, LogReadResult)] = {
@@ -1305,6 +1306,7 @@ class ReplicaManager(val config: KafkaConfig,
       }
       else {
         // we do not need to check if the leader exists again since this has been done at the beginning of this process
+        // 启动副本同步线程
         val partitionsToMakeFollowerWithLeaderAndOffset = partitionsToMakeFollower.map(partition =>
           partition.topicPartition -> BrokerAndInitialOffset(
             metadataCache.getAliveBrokers.find(_.id == partition.leaderReplicaIdOpt.get).get.brokerEndPoint(config.interBrokerListenerName),

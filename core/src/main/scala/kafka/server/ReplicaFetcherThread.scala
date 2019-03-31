@@ -114,6 +114,7 @@ class ReplicaFetcherThread(name: String,
     if (isTraceEnabled)
       trace("Follower has replica log end offset %d after appending %d bytes of messages for partition %s"
         .format(replica.logEndOffset.messageOffset, records.sizeInBytes, topicPartition))
+    //  更新 replica 的 hw（logEndOffset 在追加数据后也会立马进行修改)
     val followerHighWatermark = replica.logEndOffset.messageOffset.min(partitionData.highWatermark)
     val leaderLogStartOffset = partitionData.logStartOffset
     // for the follower replica, we do not need to keep

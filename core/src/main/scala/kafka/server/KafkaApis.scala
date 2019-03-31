@@ -621,6 +621,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       // call the replica manager to fetch messages from the local replica
       replicaManager.fetchMessages(
         fetchRequest.maxWait.toLong,
+        // Replica编号，Consumer的为 -1
         fetchRequest.replicaId,
         fetchRequest.minBytes,
         fetchRequest.maxBytes,
