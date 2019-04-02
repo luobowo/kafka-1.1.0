@@ -219,6 +219,13 @@ class KafkaController(val config: KafkaConfig, zkClient: KafkaZkClient, time: Ti
     info("Registering handlers")
 
     // 注册各种监听器
+    // brokerChangeHandler: 监听brokers/ids，broker上下线
+    // topicChangeHandler: 监听brokers/topics, topic新建
+    // topicDeletionHandler: 监听admin/delete_topics，topic删除
+    // logDirEventNotificationHandler: 监听/log_dir_event_notification
+    // isrChangeNotificationHandler: 监听/isr_change_notification，isr变化情况
+    // preferredReplicaElectionHandler: 监听admin/preferred_replica_election, 最优leader选举
+    // partitionReassignmentHandler: 监听admin/reassign_partitions, 分区迁移
     // before reading source of truth from zookeeper, register the listeners to get broker/topic callbacks
     val childChangeHandlers = Seq(brokerChangeHandler, topicChangeHandler, topicDeletionHandler, logDirEventNotificationHandler,
       isrChangeNotificationHandler)
