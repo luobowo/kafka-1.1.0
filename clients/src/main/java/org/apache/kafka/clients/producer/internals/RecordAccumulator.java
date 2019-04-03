@@ -571,6 +571,7 @@ public final class RecordAccumulator {
                                             // and also have the transaction manager track the batch so as to ensure
                                             // that sequence ordering is maintained even if we receive out of order
                                             // responses.
+                                            // 在这里设置 PID 和 sequence number 信息
                                             batch.setProducerState(producerIdAndEpoch, transactionManager.sequenceNumber(batch.topicPartition), isTransactional);
                                             transactionManager.incrementSequenceNumber(batch.topicPartition, batch.recordCount);
                                             log.debug("Assigned producerId {} and producerEpoch {} to batch with base sequence " +
