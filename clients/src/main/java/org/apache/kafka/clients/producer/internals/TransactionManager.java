@@ -118,6 +118,19 @@ public class TransactionManager {
     private volatile ProducerIdAndEpoch producerIdAndEpoch;
     private volatile boolean transactionStarted = false;
 
+    /**
+     *                         UNINITIALIZED
+     *                             |  initializeTransactions
+     *                             v
+     *                         INITIALIZING
+     *                             |  beginTransaction
+     *                             v
+     *                |-------IN_TRANSACTION ------> ABORTABLE_ERROR
+     *               | beginCommit                         | beginAbort
+     *               v                                     v
+     *     COMMITTING_TRANSACTION                   ABORTING_TRANSACTION
+     *
+     */
     private enum State {
         UNINITIALIZED,
         INITIALIZING,
